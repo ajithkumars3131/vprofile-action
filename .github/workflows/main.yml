@@ -2,7 +2,7 @@ name: vprofile actions
 on: workflow_dispatch
 env:
   AWS_REGION: us-east-2
-  ECR_REPOSITORY: 810351934067.dkr.ecr.us-east-2.amazonaws.com/vprofileapp
+  ECR_REPOSITORY: vprofileapp
   EKS_CLUSTER: vproile-action1997
 
 jobs:
