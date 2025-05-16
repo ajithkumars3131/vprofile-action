@@ -89,5 +89,5 @@ jobs:
           #config-files: .github/values/dev.yaml
           chart-path: helm/vprofilecharts
           namespace: default
-          values: appimage=${{ secrets.REGISTRY }}/{{ env.ECR_REPOSITORY }},apptag=${{ github.run_number }}  #This replace the ecr register name (810351934067.dkr.ecr.us-east-2.amazonaws.com/vprofileapp)
+          values: appimage=${{ secrets.REGISTRY }}/${{ env.ECR_REPOSITORY }},apptag=${{ github.run_number }}  #This replace the ecr register name (810351934067.dkr.ecr.us-east-2.amazonaws.com/vprofileapp)
           name: vprofile-stack
