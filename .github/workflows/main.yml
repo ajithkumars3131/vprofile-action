@@ -3,7 +3,7 @@ name: DOGEA Full Vulnerability & SBOM Scan with AI
 on:
   push:
     branches: [ main ]
-
+#
 jobs:
   scan-and-score:
     runs-on: ubuntu-latest
