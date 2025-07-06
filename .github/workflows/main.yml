@@ -5,9 +5,6 @@ on:
     branches:
       - main
 
-env:
-  PROJECT_NAME: VProfile-Security-Audit
-
 jobs:
   devsecops-scan:
     runs-on: ubuntu-latest
@@ -22,24 +19,20 @@ jobs:
       - name: 🛡️ Install Trivy, Syft, Python dependencies
         run: |
           sudo apt-get update && sudo apt-get install -y wget gnupg apt-transport-https lsb-release jq python3-pip
-          pip3 install pandas openpyxl
+          pip install pandas openpyxl
           wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
           echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/trivy.list
           sudo apt-get update && sudo apt-get install -y trivy
           curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
 
-      - name: 🔍 Run Trivy Security Scan
+      - name: 🔍 Run Trivy Security Scan (CVE, secrets, config)
         run: |
-          trivy image myapp:${{ github.sha }} \
-            --scanners vuln,secret,config \
-            --vuln-type os,library \
-            --severity CRITICAL,HIGH \
-            --format json -o trivy_results.json
+          trivy image myapp:${{ github.sha }} --scanners vuln,secret,config --vuln-type os,library --severity CRITICAL,HIGH --format json -o trivy_results.json
 
       - name: 📦 Generate SBOM with Syft
         run: syft myapp:${{ github.sha }} -o json > sbom.json
 
-      - name: 📤 Upload Raw Reports
+      - name: 📤 Upload Raw Trivy + SBOM
         uses: actions/upload-artifact@v4
         with:
           name: raw-security-reports
@@ -50,13 +43,13 @@ jobs:
       - name: 🤖 Send CVE Report to DOGEA AI
         id: dogea_scan
         run: |
-          RESPONSE=$(curl -s -X POST http://3:5000/scan -H "Content-Type: application/json" --data @trivy_results.json)
+          RESPONSE=$(curl -s -X POST http://13.127.102.53:5000/scan -H "Content-Type: application/json" --data @trivy_results.json)
           echo "$RESPONSE" > dogea_cve_report.txt
 
       - name: 🤖 Send SBOM to DOGEA AI
         id: dogea_sbom
         run: |
-          RESPONSE=$(curl -s -X POST http://:5000/sbom -H "Content-Type: application/json" --data @sbom.json)
+          RESPONSE=$(curl -s -X POST http://13.127.102.53:5000/sbom -H "Content-Type: application/json" --data @sbom.json)
           echo "$RESPONSE" > dogea_sbom_report.txt
 
       - name: 📝 Generate Fix Summary Text Report
@@ -68,31 +61,26 @@ jobs:
 
       - name: 📊 Convert DOGEA Fix Report to Excel
         run: |
-          TIMESTAMP=$(date +'%Y-%m-%d_%H-%M')
-          echo "export REPORT_FILE=${{ env.PROJECT_NAME }}_dogea_cve_report_$TIMESTAMP.xlsx" >> $GITHUB_ENV
-
-          # Generate the Python script to convert the report
           cat <<EOF > convert.py
-import json
-import pandas as pd
+          import json
+          import pandas as pd
 
-with open("dogea_cve_report.txt") as f:
-    data = json.load(f)
+          with open("dogea_cve_report.txt") as f:
+              data = json.load(f)
 
-fixes = data.get("suggestions", [])
-score = data.get("vuln_score", 0)
+          fixes = data.get("suggestions", [])
+          score = data.get("vuln_score", 0)
 
-df = pd.DataFrame(fixes, columns=["Fix Suggestion"])
-df["Vuln Score"] = score
-df["CVE"] = df["Fix Suggestion"].str.extract(r"(CVE-\d{4}-\d+)")
-df["Package"] = df["Fix Suggestion"].str.extract(r"Update (.*?) to patch")
-df = df[["Package", "CVE", "Fix Suggestion", "Vuln Score"]]
-df.to_excel("${{ env.REPORT_FILE }}", index=False)
-EOF
-          # Run the Python script
+          df = pd.DataFrame(fixes, columns=["Fix Suggestion"])
+          df["Vuln Score"] = score
+          df["CVE"] = df["Fix Suggestion"].str.extract(r"(CVE-\\d{4}-\\d+)")
+          df["Package"] = df["Fix Suggestion"].str.extract(r"Update (.*?) to patch")
+          df = df[["Package", "CVE", "Fix Suggestion", "Vuln Score"]]
+          df.to_excel("dogea_cve_report.xlsx", index=False)
+          EOF
           python3 convert.py
 
-      - name: 📤 Upload DOGEA Reports
+      - name: 📤 Upload All DOGEA Reports
         uses: actions/upload-artifact@v4
         with:
           name: dogea-ai-reports
@@ -100,9 +88,9 @@ EOF
             dogea_cve_report.txt
             dogea_sbom_report.txt
             dogea_fixes_report.txt
-            ${{ env.REPORT_FILE }}
+            dogea_cve_report.xlsx
 
-      - name: 🧪 Run CIS Docker Benchmark
+      - name: 🧲 Run CIS Docker Benchmark with Dockle
         run: |
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock goodwithtech/dockle myapp:${{ github.sha }}
 
@@ -115,26 +103,4 @@ EOF
           fi
 
       - name: ✅ Done
-        run: echo "Pipeline completed. Reports generated."
-
-  slack-upload:
-    needs: devsecops-scan
-    runs-on: ubuntu-latest
-    if: always()
-
-    steps:
-      - name: 📥 Download Excel Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: dogea-ai-reports
-
-      - name: 📬 Send Excel Report to Slack
-        env:
-          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-        run: |
-          FILE=$(ls *.xlsx)
-          curl -F file=@$FILE \
-               -F "initial_comment=📊 *${{ env.PROJECT_NAME }}* Report — $(date '+%Y-%m-%d %H:%M')" \
-               -F channels=#your-slack-channel \
-               -H "Authorization: Bearer $SLACK_BOT_TOKEN" \
-               https://slack.com/api/files.upload
+        run: echo "Scan complete. Excel and text reports generated."
