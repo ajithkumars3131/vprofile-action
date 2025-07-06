@@ -1,11 +1,11 @@
-name: DOGEA OS Vulnerability Scan with AI
+name: DOGEA Full Vulnerability & SBOM Scan with AI
 
 on:
   push:
     branches: [ main ]
 
 jobs:
-  scan-and-evaluate:
+  scan-and-score:
     runs-on: ubuntu-latest
 
     steps:
@@ -23,34 +23,65 @@ jobs:
         echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | sudo tee -a /etc/apt/sources.list.d/trivy.list
         sudo apt-get update && sudo apt-get install trivy -y
 
-    - name: 🔍 Scan Docker Image with Trivy (OS Only)
+    - name: 🔍 Scan Docker Image with Trivy (OS CVEs)
       run: |
         trivy image --scanners vuln --vuln-type os --severity CRITICAL,HIGH \
         --format json -o trivy_os_results.json myapp:${{ github.sha }}
 
-    - name: 📤 Upload Trivy Report as Artifact
-      uses: actions/upload-artifact@v4  # ✅ Updated to v4
+    - name: 📦 Install Syft (SBOM tool)
+      run: |
+        curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+
+    - name: 🧾 Generate SBOM from Docker Image
+      run: |
+        syft myapp:${{ github.sha }} -o json > sbom.json
+
+    - name: 📤 Upload Trivy Report
+      uses: actions/upload-artifact@v4
       with:
         name: trivy-os-scan-results
         path: trivy_os_results.json
 
-    - name: 🤖 Send Scan Results to DOGEA AI API
-      id: dogea
+    - name: 📤 Upload SBOM Report
+      uses: actions/upload-artifact@v4
+      with:
+        name: sbom-json
+        path: sbom.json
+
+    - name: 🤖 Send Trivy CVE JSON to DOGEA
+      id: dogea_cve
       run: |
-        echo "Sending to DOGEA..."
         RESPONSE=$(curl -s -X POST http://13.127.102.53:5000/scan \
           -H "Content-Type: application/json" \
           --data @trivy_os_results.json)
-
-        echo "DOGEA Response: $RESPONSE"
+        echo "DOGEA CVE Response: $RESPONSE"
         echo "response=$RESPONSE" >> "$GITHUB_OUTPUT"
 
-    - name: 📝 Save DOGEA Response to TXT Report
+    - name: 📝 Save DOGEA CVE Response
       run: |
-        echo "${{ steps.dogea.outputs.response }}" > dogea_report.txt
+        echo "${{ steps.dogea_cve.outputs.response }}" > dogea_cve_report.txt
 
-    - name: 📦 Upload DOGEA AI Report (Text)
-      uses: actions/upload-artifact@v4  # ✅ Also upgraded
+    - name: 📤 Upload DOGEA CVE Report
+      uses: actions/upload-artifact@v4
       with:
-        name: dogea-ai-report
-        path: dogea_report.txt
+        name: dogea-cve-report
+        path: dogea_cve_report.txt
+
+    - name: 🤖 Send SBOM to DOGEA
+      id: dogea_sbom
+      run: |
+        RESPONSE=$(curl -s -X POST http://13.127.102.53:5000/sbom \
+          -H "Content-Type: application/json" \
+          --data @sbom.json)
+        echo "DOGEA SBOM Response: $RESPONSE"
+        echo "response=$RESPONSE" >> "$GITHUB_OUTPUT"
+
+    - name: 📝 Save DOGEA SBOM Response
+      run: |
+        echo "${{ steps.dogea_sbom.outputs.response }}" > dogea_sbom_report.txt
+
+    - name: 📤 Upload DOGEA SBOM Report
+      uses: actions/upload-artifact@v4
+      with:
+        name: dogea-sbom-report
+        path: dogea_sbom_report.txt
