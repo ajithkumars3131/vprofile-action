@@ -1,106 +1,56 @@
-name: vprofile actions
+name: DOGEA OS Vulnerability Scan with AI
 
 on:
-  workflow_dispatch
-
-env:
-  AWS_REGION: us-east-2
-  ECR_REPOSITORY: vprofileapp
-  EKS_CLUSTER: vproile-action1997
+  push:
+    branches: [ main ]
 
 jobs:
-  Testing:
+  scan-and-evaluate:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Code checkout
-        uses: actions/checkout@v4
+    - name: 🧾 Checkout Code
+      uses: actions/checkout@v3
 
-      - name: Maven test
-        run: mvn test
+    - name: 🐳 Build Docker Image
+      run: |
+        docker build -t myapp:${{ github.sha }} .
 
-      - name: Checkstyle
-        run: mvn checkstyle:checkstyle
+    - name: 🛡️ Install Trivy
+      run: |
+        sudo apt-get install wget apt-transport-https gnupg lsb-release -y
+        wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+        echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | sudo tee -a /etc/apt/sources.list.d/trivy.list
+        sudo apt-get update && sudo apt-get install trivy -y
 
-      - name: Setup SonarQube
-        uses: warchant/setup-sonar-scanner@v7
+    - name: 🔍 Scan Docker Image with Trivy (OS Only)
+      run: |
+        trivy image --scanners vuln --vuln-type os --severity CRITICAL,HIGH \
+        --format json -o trivy_os_results.json myapp:${{ github.sha }}
 
-      - name: SonarQube Scan
-        run: |
-          sonar-scanner \
-            -Dsonar.host.url=${{ secrets.SONAR_URL }} \
-            -Dsonar.login=${{ secrets.SONAR_TOKEN }} \
-            -Dsonar.organization=${{ secrets.SONAR_ORGANIZATION }} \
-            -Dsonar.projectKey=${{ secrets.SONAR_PROJECT_KEY }} \
-            -Dsonar.sources=src/ \
-            -Dsonar.junit.reportsPath=target/surefire-reports/ \
-            -Dsonar.jacoco.reportsPath=target/jacoco.exec \
-            -Dsonar.java.checkstyle.reportPaths=target/checkstyle-result.xml \
-            -Dsonar.java.binaries=target/test-classes/com/visualpathit/account
+    - name: 📤 Upload Trivy Report as Artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: trivy-os-scan-results
+        path: trivy_os_results.json
 
-  BUILD_AND_PUBLISH:
-    needs: Testing
-    runs-on: ubuntu-latest
-    steps:
-      - name: Code checkout
-        uses: actions/checkout@v4
+    - name: 🤖 Send Scan Results to DOGEA AI API
+      id: dogea
+      run: |
+        echo "Sending to DOGEA..."
+        RESPONSE=$(curl -s -X POST http://13.127.102.53:5000/scan \
+          -H "Content-Type: application/json" \
+          --data @trivy_os_results.json)
 
-      - name: Build & Upload image to ECR
-        uses: appleboy/docker-ecr-action@master
-        with:
-          access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          registry: ${{ secrets.REGISTRY }}
-          repo: ${{ env.ECR_REPOSITORY }}
-          region: ${{ env.AWS_REGION }}
-          tags: latest,${{ github.run_number }}
-          daemon_off: false
-          dockerfile: ./Dockerfile
-          context: ./
+        echo "DOGEA Response: $RESPONSE"
+        echo "response=$RESPONSE" >> "$GITHUB_OUTPUT"
 
-  DeployToEKS:
-    needs: BUILD_AND_PUBLISH
-    runs-on: ubuntu-latest
-    steps:
-      - name: Code checkout
-        uses: actions/checkout@v4
+    - name: 📝 Save DOGEA Response to TXT Report
+      run: |
+        echo "${{ steps.dogea.outputs.response }}" > dogea_report.txt
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v1
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Get Kube config file
-        run: aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.EKS_CLUSTER }}
-
-      - name: Print config file
-        run: cat ~/.kube/config
-
-      - name: Login to ECR (create image pull secret)
-        run: |
-          kubectl delete secret regcred --ignore-not-found
-          kubectl create secret docker-registry regcred \
-            --docker-server=${{ secrets.REGISTRY }} \
-            --docker-username=AWS \
-            --docker-password=$(aws ecr get-login-password)
-
-      - name: Create custom values file
-        run: |
-          cat <<EOF > custom-values.yaml
-          appimage: "${{ secrets.REGISTRY }}/${{ env.ECR_REPOSITORY }}"
-          apptag: "${{ github.run_number }}"
-          EOF
-
-      
-      - name: Deploy Helm chart to EKS
-        uses: bitovi/github-actions-deploy-eks-helm@v1.2.8
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
-          cluster-name: ${{ env.EKS_CLUSTER }}
-          chart-path: helm/vprofilecharts
-          namespace: default
-          values: appimage=${{ secrets.REGISTRY }}/${{ env.ECR_REPOSITORY }},apptag=${{ github.run_number }}
-          name: vproile-action1997
+    - name: 📦 Upload DOGEA AI Report (Text)
+      uses: actions/upload-artifact@v4
+      with:
+        name: dogea-ai-report
+        path: dogea_report.txt
