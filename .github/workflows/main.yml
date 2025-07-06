@@ -27,11 +27,7 @@ jobs:
 
       - name: 🔍 Run Trivy Security Scan (CVE, secrets, config)
         run: |
-          trivy image myapp:${{ github.sha }} \
-            --scanners vuln,secret,config \
-            --vuln-type os,library \
-            --severity CRITICAL,HIGH \
-            --format json -o trivy_results.json
+          trivy image myapp:${{ github.sha }}             --scanners vuln,secret,config             --vuln-type os,library             --severity CRITICAL,HIGH             --format json -o trivy_results.json
 
       - name: 📦 Generate SBOM with Syft
         run: syft myapp:${{ github.sha }} -o json > sbom.json
@@ -47,17 +43,13 @@ jobs:
       - name: 🤖 Send CVE Report to DOGEA AI
         id: dogea_scan
         run: |
-          RESPONSE=$(curl -s -X POST http://13.127.102.53:5000/scan \
-            -H "Content-Type: application/json" \
-            --data @trivy_results.json)
+          RESPONSE=$(curl -s -X POST http://13.127.102.53:5000/scan             -H "Content-Type: application/json"             --data @trivy_results.json)
           echo "$RESPONSE" > dogea_cve_report.txt
 
       - name: 🤖 Send SBOM to DOGEA AI
         id: dogea_sbom
         run: |
-          RESPONSE=$(curl -s -X POST http://13.127.102.53:5000/sbom \
-            -H "Content-Type: application/json" \
-            --data @sbom.json)
+          RESPONSE=$(curl -s -X POST http://13.127.102.53:5000/sbom             -H "Content-Type: application/json"             --data @sbom.json)
           echo "$RESPONSE" > dogea_sbom_report.txt
 
       - name: 📝 Generate Fix Summary Text Report
@@ -69,8 +61,7 @@ jobs:
 
       - name: 📊 Convert DOGEA Fix Report to Excel
         run: |
-          cat <<EOF > convert.py
-import json
+          echo 'import json
 import pandas as pd
 
 with open("dogea_cve_report.txt") as f:
@@ -84,8 +75,7 @@ df["Vuln Score"] = score
 df["CVE"] = df["Fix Suggestion"].str.extract(r"(CVE-\\d{4}-\\d+)")
 df["Package"] = df["Fix Suggestion"].str.extract(r"Update (.*?) to patch")
 df = df[["Package", "CVE", "Fix Suggestion", "Vuln Score"]]
-df.to_excel("dogea_cve_report.xlsx", index=False)
-EOF
+df.to_excel("dogea_cve_report.xlsx", index=False)' > convert.py
           python3 convert.py
 
       - name: 📤 Upload All DOGEA Reports
@@ -100,8 +90,7 @@ EOF
 
       - name: 🧲 Run CIS Docker Benchmark with Dockle
         run: |
-          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
-            goodwithtech/dockle myapp:${{ github.sha }}
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock             goodwithtech/dockle myapp:${{ github.sha }}
 
       - name: ❌ Block if Vulnerability Score is High
         run: |
