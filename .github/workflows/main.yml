@@ -50,13 +50,13 @@ jobs:
       - name: 🤖 Send CVE Report to DOGEA AI
         id: dogea_scan
         run: |
-          RESPONSE=$(curl -s -X POST http://13.127.102.53:5000/scan -H "Content-Type: application/json" --data @trivy_results.json)
+          RESPONSE=$(curl -s -X POST http://3:5000/scan -H "Content-Type: application/json" --data @trivy_results.json)
           echo "$RESPONSE" > dogea_cve_report.txt
 
       - name: 🤖 Send SBOM to DOGEA AI
         id: dogea_sbom
         run: |
-          RESPONSE=$(curl -s -X POST http://13.127.102.53:5000/sbom -H "Content-Type: application/json" --data @sbom.json)
+          RESPONSE=$(curl -s -X POST http://:5000/sbom -H "Content-Type: application/json" --data @sbom.json)
           echo "$RESPONSE" > dogea_sbom_report.txt
 
       - name: 📝 Generate Fix Summary Text Report
@@ -71,6 +71,7 @@ jobs:
           TIMESTAMP=$(date +'%Y-%m-%d_%H-%M')
           echo "export REPORT_FILE=${{ env.PROJECT_NAME }}_dogea_cve_report_$TIMESTAMP.xlsx" >> $GITHUB_ENV
 
+          # Generate the Python script to convert the report
           cat <<EOF > convert.py
 import json
 import pandas as pd
@@ -83,11 +84,12 @@ score = data.get("vuln_score", 0)
 
 df = pd.DataFrame(fixes, columns=["Fix Suggestion"])
 df["Vuln Score"] = score
-df["CVE"] = df["Fix Suggestion"].str.extract(r"(CVE-\\d{4}-\\d+)")
+df["CVE"] = df["Fix Suggestion"].str.extract(r"(CVE-\d{4}-\d+)")
 df["Package"] = df["Fix Suggestion"].str.extract(r"Update (.*?) to patch")
 df = df[["Package", "CVE", "Fix Suggestion", "Vuln Score"]]
 df.to_excel("${{ env.REPORT_FILE }}", index=False)
 EOF
+          # Run the Python script
           python3 convert.py
 
       - name: 📤 Upload DOGEA Reports
