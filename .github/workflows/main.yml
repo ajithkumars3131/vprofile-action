@@ -69,7 +69,7 @@ jobs:
 
       - name: 📊 Convert DOGEA Fix Report to Excel
         run: |
-          cat <<EOF > convert.py
+          echo '
 import json
 import pandas as pd
 
@@ -85,7 +85,7 @@ df["CVE"] = df["Fix Suggestion"].str.extract(r"(CVE-\\d{4}-\\d+)")
 df["Package"] = df["Fix Suggestion"].str.extract(r"Update (.*?) to patch")
 df = df[["Package", "CVE", "Fix Suggestion", "Vuln Score"]]
 df.to_excel("dogea_cve_report.xlsx", index=False)
-EOF
+' > convert.py
           python3 convert.py
 
       - name: 📤 Upload All DOGEA Reports
