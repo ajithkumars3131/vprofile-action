@@ -1,113 +1,118 @@
 name: Full DevSecOps Pipeline with DOGEA AI + Fix Summary + Excel Export
 
 on:
-  push:
-    branches: [ main ]
+push:
+branches: \[ main ]
 
 jobs:
-  devsecops-scan:
-    runs-on: ubuntu-latest
+devsecops-scan:
+runs-on: ubuntu-latest
 
-    steps:
-    - name: 🧾 Checkout Code
-      uses: actions/checkout@v3
+```
+steps:
+- name: 🧾 Checkout Code
+  uses: actions/checkout@v3
 
-    - name: 🐳 Build Docker Image
-      run: docker build -t myapp:${{ github.sha }} .
+- name: 🐳 Build Docker Image
+  run: docker build -t myapp:${{ github.sha }} .
 
-    - name: 🛡️ Install Trivy, Syft, Python dependencies
-      run: |
-        sudo apt-get update && sudo apt-get install -y wget gnupg apt-transport-https lsb-release jq python3-pip
-        pip install pandas openpyxl
-        wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
-        echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/trivy.list
-        sudo apt-get update && sudo apt-get install -y trivy
-        curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+- name: 🛡️ Install Trivy, Syft, Python dependencies
+  run: |
+    sudo apt-get update && sudo apt-get install -y wget gnupg apt-transport-https lsb-release jq python3-pip
+    pip install pandas openpyxl
+    wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+    echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/trivy.list
+    sudo apt-get update && sudo apt-get install -y trivy
+    curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
 
-    - name: 🔍 Run Trivy Security Scan (CVE, secrets, config)
-      run: |
-        trivy image myapp:${{ github.sha }} \
-          --scanners vuln,secret,config \
-          --vuln-type os,library \
-          --severity CRITICAL,HIGH \
-          --format json -o trivy_results.json
+- name: 🔍 Run Trivy Security Scan (CVE, secrets, config)
+  run: |
+    trivy image myapp:${{ github.sha }} \
+      --scanners vuln,secret,config \
+      --vuln-type os,library \
+      --severity CRITICAL,HIGH \
+      --format json -o trivy_results.json
 
-    - name: 📦 Generate SBOM with Syft
-      run: syft myapp:${{ github.sha }} -o json > sbom.json
+- name: 📦 Generate SBOM with Syft
+  run: syft myapp:${{ github.sha }} -o json > sbom.json
 
-    - name: 📤 Upload Raw Trivy + SBOM
-      uses: actions/upload-artifact@v4
-      with:
-        name: raw-security-reports
-        path: |
-          trivy_results.json
-          sbom.json
+- name: 📤 Upload Raw Trivy + SBOM
+  uses: actions/upload-artifact@v4
+  with:
+    name: raw-security-reports
+    path: |
+      trivy_results.json
+      sbom.json
 
-    - name: 🤖 Send CVE Report to DOGEA AI
-      id: dogea_scan
-      run: |
-        RESPONSE=$(curl -s -X POST http://<your-server-ip>:5000/scan \
-          -H "Content-Type: application/json" \
-          --data @trivy_results.json)
-        echo "$RESPONSE" > dogea_cve_report.txt
+- name: 🤖 Send CVE Report to DOGEA AI
+  id: dogea_scan
+  run: |
+    RESPONSE=$(curl -s -X POST http://<your-server-ip>:5000/scan \
+      -H "Content-Type: application/json" \
+      --data @trivy_results.json)
+    echo "$RESPONSE" > dogea_cve_report.txt
 
-    - name: 🤖 Send SBOM to DOGEA AI
-      id: dogea_sbom
-      run: |
-        RESPONSE=$(curl -s -X POST http://<your-server-ip>:5000/sbom \
-          -H "Content-Type: application/json" \
-          --data @sbom.json)
-        echo "$RESPONSE" > dogea_sbom_report.txt
+- name: 🤖 Send SBOM to DOGEA AI
+  id: dogea_sbom
+  run: |
+    RESPONSE=$(curl -s -X POST http://<your-server-ip>:5000/sbom \
+      -H "Content-Type: application/json" \
+      --data @sbom.json)
+    echo "$RESPONSE" > dogea_sbom_report.txt
 
-    - name: 📝 Generate Fix Summary Text Report
-      run: |
-        echo "🐳 DOGEA AI Fix Summary:" > dogea_fixes_report.txt
-        jq -r '.suggestions[]' dogea_cve_report.txt | head -n 20 | while read line; do
-          echo "- $line" >> dogea_fixes_report.txt
-        done
+- name: 📝 Generate Fix Summary Text Report
+  run: |
+    echo "🐳 DOGEA AI Fix Summary:" > dogea_fixes_report.txt
+    jq -r '.suggestions[]' dogea_cve_report.txt | head -n 20 | while read line; do
+      echo "- $line" >> dogea_fixes_report.txt
+    done
 
-    - name: 📊 Convert DOGEA Fix Report to Excel
-      run: |
-        python3 <<EOF
+- name: 📊 Convert DOGEA Fix Report to Excel
+  run: |
+    python3 <<EOF
+```
+
 import json
 import pandas as pd
 
-with open("dogea_cve_report.txt") as f:
-    data = json.load(f)
+with open("dogea\_cve\_report.txt") as f:
+data = json.load(f)
 
-fixes = data.get("suggestions", [])
-score = data.get("vuln_score", 0)
+fixes = data.get("suggestions", \[])
+score = data.get("vuln\_score", 0)
 
-df = pd.DataFrame(fixes, columns=["Fix Suggestion"])
-df["Vuln Score"] = score
-df["CVE"] = df["Fix Suggestion"].str.extract(r'(CVE-\\d{4}-\\d+)')
-df["Package"] = df["Fix Suggestion"].str.extract(r'Update (.*) to patch')
-df = df[["Package", "CVE", "Fix Suggestion", "Vuln Score"]]
-df.to_excel("dogea_cve_report.xlsx", index=False)
+df = pd.DataFrame(fixes, columns=\["Fix Suggestion"])
+df\["Vuln Score"] = score
+df\["CVE"] = df\["Fix Suggestion"].str.extract(r'(CVE-\d{4}-\d+)')
+df\["Package"] = df\["Fix Suggestion"].str.extract(r'Update (.\*?) to patch')
+df = df\[\["Package", "CVE", "Fix Suggestion", "Vuln Score"]]
+df.to\_excel("dogea\_cve\_report.xlsx", index=False)
 EOF
 
-    - name: 📤 Upload All DOGEA Reports
-      uses: actions/upload-artifact@v4
-      with:
-        name: dogea-ai-reports
-        path: |
-          dogea_cve_report.txt
-          dogea_sbom_report.txt
-          dogea_fixes_report.txt
-          dogea_cve_report.xlsx
+```
+- name: 📤 Upload All DOGEA Reports
+  uses: actions/upload-artifact@v4
+  with:
+    name: dogea-ai-reports
+    path: |
+      dogea_cve_report.txt
+      dogea_sbom_report.txt
+      dogea_fixes_report.txt
+      dogea_cve_report.xlsx
 
-    - name: 🧪 Run CIS Docker Benchmark with Dockle
-      run: |
-        docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
-          goodwithtech/dockle myapp:${{ github.sha }}
+- name: 🧪 Run CIS Docker Benchmark with Dockle
+  run: |
+    docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+      goodwithtech/dockle myapp:${{ github.sha }}
 
-    - name: ❌ Block if Vulnerability Score is High
-      run: |
-        SCORE=$(jq '.vuln_score' dogea_cve_report.txt)
-        if [ "$SCORE" -gt 10 ]; then
-          echo "High vulnerability score: $SCORE — Blocking release."
-          exit 1
-        fi
+- name: ❌ Block if Vulnerability Score is High
+  run: |
+    SCORE=$(jq '.vuln_score' dogea_cve_report.txt)
+    if [ "$SCORE" -gt 10 ]; then
+      echo "High vulnerability score: $SCORE — Blocking release."
+      exit 1
+    fi
 
-    - name: ✅ Done
-      run: echo "Scan complete. Excel and text reports generated."
+- name: ✅ Done
+  run: echo "Scan complete. Excel and text reports generated."
+```
