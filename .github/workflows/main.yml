@@ -56,7 +56,7 @@ jobs:
     - name: 🤖 Send SBOM to DOGEA AI
       id: dogea_sbom
       run: |
-        RESPONSE=$(curl -s -X POST http://localhost:5000/sbom \
+        RESPONSE=$(curl -s -X POST http://13.127.102.53:5000/sbom \
           -H "Content-Type: application/json" \
           --data @sbom.json)
         echo "response=$RESPONSE" >> "$GITHUB_OUTPUT"
