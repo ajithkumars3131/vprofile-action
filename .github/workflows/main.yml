@@ -1,11 +1,11 @@
-name: DOGEA Full Vulnerability & SBOM Scan with AI
+name: Full DevSecOps Pipeline with DOGEA AI
 
 on:
   push:
     branches: [ main ]
-#
+
 jobs:
-  scan-and-score:
+  devsecops-scan:
     runs-on: ubuntu-latest
 
     steps:
@@ -13,75 +13,69 @@ jobs:
       uses: actions/checkout@v3
 
     - name: 🐳 Build Docker Image
-      run: |
-        docker build -t myapp:${{ github.sha }} .
+      run: docker build -t myapp:${{ github.sha }} .
 
-    - name: 🛡️ Install Trivy
+    - name: 🛡️ Install Trivy and Syft
       run: |
-        sudo apt-get install wget apt-transport-https gnupg lsb-release -y
+        sudo apt-get update && sudo apt-get install -y wget gnupg apt-transport-https lsb-release
         wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
-        echo deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | sudo tee -a /etc/apt/sources.list.d/trivy.list
-        sudo apt-get update && sudo apt-get install trivy -y
-
-    - name: 🔍 Scan Docker Image with Trivy (OS CVEs)
-      run: |
-        trivy image --scanners vuln --vuln-type os --severity CRITICAL,HIGH \
-        --format json -o trivy_os_results.json myapp:${{ github.sha }}
-
-    - name: 📦 Install Syft (SBOM tool)
-      run: |
+        echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/trivy.list
+        sudo apt-get update && sudo apt-get install -y trivy
         curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
 
-    - name: 🧾 Generate SBOM from Docker Image
+    - name: 🔍 Trivy Full Security Scan (CVE, Secrets, Dockerfile)
       run: |
-        syft myapp:${{ github.sha }} -o json > sbom.json
+        trivy image myapp:${{ github.sha }} \
+          --scanners vuln,secret,config \
+          --vuln-type os,library \
+          --severity CRITICAL,HIGH \
+          --format json -o trivy_results.json
 
-    - name: 📤 Upload Trivy Report
+    - name: 📦 Generate SBOM (Software Bill of Materials)
+      run: syft myapp:${{ github.sha }} -o json > sbom.json
+
+    - name: 📤 Upload Raw Reports (Trivy + SBOM)
       uses: actions/upload-artifact@v4
       with:
-        name: trivy-os-scan-results
-        path: trivy_os_results.json
+        name: raw-security-reports
+        path: |
+          trivy_results.json
+          sbom.json
 
-    - name: 📤 Upload SBOM Report
-      uses: actions/upload-artifact@v4
-      with:
-        name: sbom-json
-        path: sbom.json
-
-    - name: 🤖 Send Trivy CVE JSON to DOGEA
-      id: dogea_cve
+    - name: 🤖 Send CVE Report to DOGEA AI
+      id: dogea_scan
       run: |
-        RESPONSE=$(curl -s -X POST http://13.127.102.53:5000/scan \
+        RESPONSE=$(curl -s -X POST http://localhost:5000/scan \
           -H "Content-Type: application/json" \
-          --data @trivy_os_results.json)
-        echo "DOGEA CVE Response: $RESPONSE"
+          --data @trivy_results.json)
         echo "response=$RESPONSE" >> "$GITHUB_OUTPUT"
 
-    - name: 📝 Save DOGEA CVE Response
-      run: |
-        echo "${{ steps.dogea_cve.outputs.response }}" > dogea_cve_report.txt
+    - name: 📝 Save DOGEA CVE Report
+      run: echo "${{ steps.dogea_scan.outputs.response }}" > dogea_cve_report.txt
 
-    - name: 📤 Upload DOGEA CVE Report
-      uses: actions/upload-artifact@v4
-      with:
-        name: dogea-cve-report
-        path: dogea_cve_report.txt
-
-    - name: 🤖 Send SBOM to DOGEA
+    - name: 🤖 Send SBOM to DOGEA AI
       id: dogea_sbom
       run: |
-        RESPONSE=$(curl -s -X POST http://13.127.102.53:5000/sbom \
+        RESPONSE=$(curl -s -X POST http://localhost:5000/sbom \
           -H "Content-Type: application/json" \
           --data @sbom.json)
-        echo "DOGEA SBOM Response: $RESPONSE"
         echo "response=$RESPONSE" >> "$GITHUB_OUTPUT"
 
-    - name: 📝 Save DOGEA SBOM Response
-      run: |
-        echo "${{ steps.dogea_sbom.outputs.response }}" > dogea_sbom_report.txt
+    - name: 📝 Save DOGEA SBOM Report
+      run: echo "${{ steps.dogea_sbom.outputs.response }}" > dogea_sbom_report.txt
 
-    - name: 📤 Upload DOGEA SBOM Report
+    - name: 📤 Upload DOGEA AI Reports
       uses: actions/upload-artifact@v4
       with:
-        name: dogea-sbom-report
-        path: dogea_sbom_report.txt
+        name: dogea-ai-reports
+        path: |
+          dogea_cve_report.txt
+          dogea_sbom_report.txt
+
+    - name: 🧪 Run Dockle (Docker CIS Benchmark)
+      run: |
+        docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+          goodwithtech/dockle myapp:${{ github.sha }}
+
+    - name: 📤 Finish
+      run: echo "All scans completed."
