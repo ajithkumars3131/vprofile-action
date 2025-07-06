@@ -1,9 +1,10 @@
 name: Full DevSecOps Pipeline with DOGEA AI + Fix Summary + Excel Export
 
 on:
-push:
-branches:
-\- main
+  push:
+    branches:
+      - main
+
 
 jobs:
 devsecops-scan:
