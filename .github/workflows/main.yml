@@ -1,93 +1,91 @@
 name: Full DevSecOps Pipeline with DOGEA AI + Fix Summary
 
 on:
-push:
-branches: \[ main ]
+  push:
+    branches: [ main ]
 
 jobs:
-devsecops-scan:
-runs-on: ubuntu-latest
+  devsecops-scan:
+    runs-on: ubuntu-latest
 
-```
-steps:
-- name: 🧾 Checkout Code
-  uses: actions/checkout@v3
+    steps:
+    - name: 🧾 Checkout Code
+      uses: actions/checkout@v3
 
-- name: 🐳 Build Docker Image
-  run: docker build -t myapp:${{ github.sha }} .
+    - name: 🐳 Build Docker Image
+      run: docker build -t myapp:${{ github.sha }} .
 
-- name: 🛡️ Install Trivy and Syft
-  run: |
-    sudo apt-get update && sudo apt-get install -y wget gnupg apt-transport-https lsb-release jq
-    wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
-    echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/trivy.list
-    sudo apt-get update && sudo apt-get install -y trivy
-    curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+    - name: 🛡️ Install Trivy and Syft
+      run: |
+        sudo apt-get update && sudo apt-get install -y wget gnupg apt-transport-https lsb-release jq
+        wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+        echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/trivy.list
+        sudo apt-get update && sudo apt-get install -y trivy
+        curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
 
-- name: 🔍 Trivy Full Security Scan (CVE, Secrets, Dockerfile)
-  run: |
-    trivy image myapp:${{ github.sha }} \
-      --scanners vuln,secret,config \
-      --vuln-type os,library \
-      --severity CRITICAL,HIGH \
-      --format json -o trivy_results.json
+    - name: 🔍 Trivy Full Security Scan (CVE, Secrets, Dockerfile)
+      run: |
+        trivy image myapp:${{ github.sha }} \
+          --scanners vuln,secret,config \
+          --vuln-type os,library \
+          --severity CRITICAL,HIGH \
+          --format json -o trivy_results.json
 
-- name: 📦 Generate SBOM (Software Bill of Materials)
-  run: syft myapp:${{ github.sha }} -o json > sbom.json
+    - name: 📦 Generate SBOM (Software Bill of Materials)
+      run: syft myapp:${{ github.sha }} -o json > sbom.json
 
-- name: 📤 Upload Raw Reports (Trivy + SBOM)
-  uses: actions/upload-artifact@v4
-  with:
-    name: raw-security-reports
-    path: |
-      trivy_results.json
-      sbom.json
+    - name: 📤 Upload Raw Reports (Trivy + SBOM)
+      uses: actions/upload-artifact@v4
+      with:
+        name: raw-security-reports
+        path: |
+          trivy_results.json
+          sbom.json
 
-- name: 🤖 Send CVE Report to DOGEA AI
-  id: dogea_scan
-  run: |
-    RESPONSE=$(curl -s -X POST http://<your-server-ip>:5000/scan \
-      -H "Content-Type: application/json" \
-      --data @trivy_results.json)
-    echo "$RESPONSE" > dogea_cve_report.txt
+    - name: 🤖 Send CVE Report to DOGEA AI
+      id: dogea_scan
+      run: |
+        RESPONSE=$(curl -s -X POST http://13.127.102.53:5000/scan \
+          -H "Content-Type: application/json" \
+          --data @trivy_results.json)
+        echo "$RESPONSE" > dogea_cve_report.txt
 
-- name: 🤖 Send SBOM to DOGEA AI
-  id: dogea_sbom
-  run: |
-    RESPONSE=$(curl -s -X POST http://<your-server-ip>:5000/sbom \
-      -H "Content-Type: application/json" \
-      --data @sbom.json)
-    echo "$RESPONSE" > dogea_sbom_report.txt
+    - name: 🤖 Send SBOM to DOGEA AI
+      id: dogea_sbom
+      run: |
+        RESPONSE=$(curl -s -X POST http://13.127.102.53:5000/sbom \
+          -H "Content-Type: application/json" \
+          --data @sbom.json)
+        echo "$RESPONSE" > dogea_sbom_report.txt
 
-- name: 📝 Create Human-Readable Fix Summary
-  run: |
-    echo "🐳 DOGEA AI Fix Summary:" > dogea_fixes_report.txt
-    jq -r '.suggestions[]' dogea_cve_report.txt | head -n 20 | while read line; do
-      echo "- $line" >> dogea_fixes_report.txt
-    done
+    - name: 📝 Create Human-Readable Fix Summary
+      run: |
+        echo "🐳 DOGEA AI Fix Summary:" > dogea_fixes_report.txt
+        jq -r '.suggestions[]' dogea_cve_report.txt | head -n 20 | while read line; do
+          echo "- $line" >> dogea_fixes_report.txt
+        done
 
-- name: 📤 Upload DOGEA AI Reports
-  uses: actions/upload-artifact@v4
-  with:
-    name: dogea-ai-reports
-    path: |
-      dogea_cve_report.txt
-      dogea_sbom_report.txt
-      dogea_fixes_report.txt
+    - name: 📤 Upload DOGEA AI Reports
+      uses: actions/upload-artifact@v4
+      with:
+        name: dogea-ai-reports
+        path: |
+          dogea_cve_report.txt
+          dogea_sbom_report.txt
+          dogea_fixes_report.txt
 
-- name: 🧪 Run Dockle (Docker CIS Benchmark)
-  run: |
-    docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
-      goodwithtech/dockle myapp:${{ github.sha }}
+    - name: 🧪 Run Dockle (Docker CIS Benchmark)
+      run: |
+        docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+          goodwithtech/dockle myapp:${{ github.sha }}
 
-- name: ❌ Fail if Vulnerability Score is Too High
-  run: |
-    SCORE=$(jq '.vuln_score' dogea_cve_report.txt)
-    if [ "$SCORE" -gt 10 ]; then
-      echo "High vulnerability score: $SCORE. Blocking the pipeline."
-      exit 1
-    fi
+    - name: ❌ Fail if Vulnerability Score is Too High
+      run: |
+        SCORE=$(jq '.vuln_score' dogea_cve_report.txt)
+        if [ "$SCORE" -gt 10 ]; then
+          echo "High vulnerability score: $SCORE. Blocking the pipeline."
+          exit 1
+        fi
 
-- name: ✅ Done
-  run: echo "Scan complete. Reports and summary saved."
-```
+    - name: ✅ Done
+      run: echo "Scan complete. Reports and summary saved."
