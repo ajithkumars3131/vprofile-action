@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: 🧾 Checkout Code
+      - name: 🗞 Checkout Code
         uses: actions/checkout@v3
 
       - name: 🐳 Build Docker Image
@@ -98,7 +98,7 @@ EOF
             dogea_fixes_report.txt
             dogea_cve_report.xlsx
 
-      - name: 🧪 Run CIS Docker Benchmark with Dockle
+      - name: 🧲 Run CIS Docker Benchmark with Dockle
         run: |
           docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
             goodwithtech/dockle myapp:${{ github.sha }}
