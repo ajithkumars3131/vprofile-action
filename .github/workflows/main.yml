@@ -43,13 +43,13 @@ jobs:
       - name: 🤖 Send CVE Report to DOGEA AI
         id: dogea_scan
         run: |
-          RESPONSE=$(curl -s -X POST http://13.127.102.53:5000/scan -H "Content-Type: application/json" --data @trivy_results.json)
+          RESPONSE=$(curl -s -X POST http://34.55.70.118:5000/scan -H "Content-Type: application/json" --data @trivy_results.json)
           echo "$RESPONSE" > dogea_cve_report.txt
 
       - name: 🤖 Send SBOM to DOGEA AI
         id: dogea_sbom
         run: |
-          RESPONSE=$(curl -s -X POST http://13.127.102.53:5000/sbom -H "Content-Type: application/json" --data @sbom.json)
+          RESPONSE=$(curl -s -X POST http://34.55.70.118:5000/sbom -H "Content-Type: application/json" --data @sbom.json)
           echo "$RESPONSE" > dogea_sbom_report.txt
 
       - name: 📝 Generate Fix Summary Text Report
